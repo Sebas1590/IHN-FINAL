@@ -8,11 +8,14 @@ import com.example.practica_desarrollomovil.data.local.preferences.SessionPrefer
 import com.example.practica_desarrollomovil.data.repository.ProductRepositoryImpl
 import com.example.practica_desarrollomovil.data.repository.SaleRepositoryImpl
 import com.example.practica_desarrollomovil.data.repository.SessionRepositoryImpl
+import com.example.practica_desarrollomovil.data.repository.UserRepositoryImpl
 import com.example.practica_desarrollomovil.domain.repository.ProductRepository
 import com.example.practica_desarrollomovil.domain.repository.SaleRepository
 import com.example.practica_desarrollomovil.domain.repository.SessionRepository
+import com.example.practica_desarrollomovil.domain.repository.UserRepository
 import com.example.practica_desarrollomovil.presentation.accessibility.AccessibilityViewModel
 import com.example.practica_desarrollomovil.presentation.login.LoginViewModel
+import com.example.practica_desarrollomovil.presentation.login.RegisterViewModel
 import com.example.practica_desarrollomovil.presentation.home.HomeViewModel
 import com.example.practica_desarrollomovil.presentation.products.ProductFormViewModel
 import com.example.practica_desarrollomovil.presentation.products.ProductsViewModel
@@ -26,7 +29,11 @@ class AppContainer(context: Context) {
         context,
         MetamercaDatabase::class.java,
         "metamerca.db"
-    ).build()
+    )
+        // Al ser una app de demostración, si cambia el esquema se recrea la base de datos
+        // en lugar de exigir una migración manual.
+        .fallbackToDestructiveMigration(dropAllTables = true)
+        .build()
 
     private val sessionPreferences = SessionPreferences(context)
     val accessibilityPreferences = AccessibilityPreferences(context)
@@ -40,7 +47,12 @@ class AppContainer(context: Context) {
     val saleRepository: SaleRepository =
         SaleRepositoryImpl(database.saleDao(), database.productDao())
 
-    fun loginViewModelFactory() = LoginViewModel.Factory(sessionRepository)
+    val userRepository: UserRepository =
+        UserRepositoryImpl(database.userDao())
+
+    fun loginViewModelFactory() = LoginViewModel.Factory(sessionRepository, userRepository)
+
+    fun registerViewModelFactory() = RegisterViewModel.Factory(userRepository)
 
     fun homeViewModelFactory() = HomeViewModel.Factory(saleRepository = saleRepository)
 

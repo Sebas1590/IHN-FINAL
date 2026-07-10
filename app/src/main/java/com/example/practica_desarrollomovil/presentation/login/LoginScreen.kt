@@ -49,13 +49,9 @@ import com.example.practica_desarrollomovil.presentation.theme.BrandBrown
 import com.example.practica_desarrollomovil.presentation.theme.CancelRed
 import com.example.practica_desarrollomovil.presentation.theme.TextSecondary
 
-// Credenciales de demostración (solo para presentar la app).
-private const val DEMO_EMAIL = "jessica@gmail.com"
-private const val DEMO_PASSWORD = "hombre-maquina"
-
 @Composable
 fun LoginScreen(
-    onLoginSuccess: () -> Unit,
+    viewModel: LoginViewModel,
     onContinueWithoutSession: () -> Unit,
     onGoToRegister: () -> Unit
 ) {
@@ -65,14 +61,7 @@ fun LoginScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val attemptLogin = {
-        val emailOk = email.trim().equals(DEMO_EMAIL, ignoreCase = true)
-        val passwordOk = password == DEMO_PASSWORD
-        if (emailOk && passwordOk) {
-            errorMessage = null
-            onLoginSuccess()
-        } else {
-            errorMessage = "Correo o contraseña incorrectos. Verifícalos e intenta de nuevo."
-        }
+        viewModel.login(email, password) { message -> errorMessage = message }
     }
 
     Column(
@@ -102,7 +91,7 @@ fun LoginScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 4.dp, bottom = 12.dp),
-                    placeholder = { Text("ejemplo@ganancias.com") },
+                    placeholder = { Text("correo@ejemplo.com") },
                     singleLine = true,
                     isError = errorMessage != null,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)

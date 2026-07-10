@@ -31,6 +31,7 @@ import com.example.practica_desarrollomovil.presentation.home.HomeViewModel
 import com.example.practica_desarrollomovil.presentation.login.LoginScreen
 import com.example.practica_desarrollomovil.presentation.login.LoginViewModel
 import com.example.practica_desarrollomovil.presentation.login.RegisterScreen
+import com.example.practica_desarrollomovil.presentation.login.RegisterViewModel
 import com.example.practica_desarrollomovil.presentation.products.ProductFormScreen
 import com.example.practica_desarrollomovil.presentation.products.ProductFormViewModel
 import com.example.practica_desarrollomovil.presentation.products.ProductsScreen
@@ -63,14 +64,14 @@ fun MetamercaNavHost(container: AppContainer) {
         if (isGuestActive) {
             MainScaffold(container = container)
         } else if (showRegister) {
+            val registerViewModel = viewModel<RegisterViewModel>(factory = container.registerViewModelFactory())
             RegisterScreen(
+                viewModel = registerViewModel,
                 onBack = { showRegister = false }
             )
         } else {
             LoginScreen(
-                onLoginSuccess = {
-                    loginViewModel.continueWithoutSession { }
-                },
+                viewModel = loginViewModel,
                 onContinueWithoutSession = {
                     loginViewModel.continueWithoutSession { }
                 },

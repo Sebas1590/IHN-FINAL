@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,39 +33,38 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.practica_desarrollomovil.presentation.components.MetamercaCard
 import com.example.practica_desarrollomovil.presentation.components.MetamercaSuccessDialog
 import com.example.practica_desarrollomovil.presentation.components.PrimaryBrownButton
 import com.example.practica_desarrollomovil.presentation.theme.BrandBrown
+import com.example.practica_desarrollomovil.presentation.theme.CancelRed
 import com.example.practica_desarrollomovil.presentation.theme.TextSecondary
 
 /**
- * Pantalla de registro puramente visual (demostración).
- * No guarda datos ni valida credenciales: sirve para mostrar cómo lucirá el flujo.
+ * Pantalla de registro con validación real por campo.
+ * Al crear la cuenta correctamente, el usuario queda guardado y puede iniciar sesión.
  */
 @Composable
 fun RegisterScreen(
+    viewModel: RegisterViewModel,
     onBack: () -> Unit
 ) {
-    var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var passwordVisible by remember { mutableStateOf(false) }
     var confirmVisible by remember { mutableStateOf(false) }
-    var showDemoDialog by remember { mutableStateOf(false) }
 
     BackHandler(onBack = onBack)
 
-    if (showDemoDialog) {
+    if (uiState.registeredSuccessfully) {
         MetamercaSuccessDialog(
-            onDismissRequest = { showDemoDialog = false; onBack() },
-            onConfirm = { showDemoDialog = false; onBack() },
-            onSecondaryAction = { showDemoDialog = false },
+            onDismissRequest = { viewModel.consumeRegistered(); onBack() },
+            onConfirm = { viewModel.consumeRegistered(); onBack() },
+            onSecondaryAction = { viewModel.consumeRegistered(); onBack() },
             title = "¡Cuenta creada!",
-            text = "Esta es una vista de demostración. Así se verá el registro cuando el programa esté en funcionamiento.",
+            text = "Tu cuenta se registró correctamente. Ya puedes iniciar sesión con tu correo y contraseña.",
             confirmText = "Ir a iniciar sesión",
-            secondaryText = "Seguir viendo"
+            secondaryText = "Cerrar"
         )
     }
 
@@ -106,44 +106,52 @@ fun RegisterScreen(
                 Column(modifier = Modifier.padding(20.dp)) {
                     LabeledField(
                         label = "Nombre completo",
-                        value = name,
-                        onValueChange = { name = it },
-                        placeholder = "Jessica Pérez",
-                        keyboardType = KeyboardType.Text
+                        value = uiState.name,
+                        onValueChange = viewModel::onNameChange,
+                        placeholder = "Nombre y apellido",
+                        keyboardType = KeyboardType.Text,
+                        error = uiState.nameError
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
                     LabeledField(
                         label = "Correo electrónico",
-                        value = email,
-                        onValueChange = { email = it },
-                        placeholder = "ejemplo@ganancias.com",
-                        keyboardType = KeyboardType.Email
+                        value = uiState.email,
+                        onValueChange = viewModel::onEmailChange,
+                        placeholder = "correo@ejemplo.com",
+                        keyboardType = KeyboardType.Email,
+                        error = uiState.emailError
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
                     PasswordField(
                         label = "Contraseña",
-                        value = password,
-                        onValueChange = { password = it },
+                        value = uiState.password,
+                        onValueChange = viewModel::onPasswordChange,
                         visible = passwordVisible,
-                        onToggleVisibility = { passwordVisible = !passwordVisible }
+                        onToggleVisibility = { passwordVisible = !passwordVisible },
+                        error = uiState.passwordError
                     )
                     Spacer(modifier = Modifier.height(12.dp))
 
                     PasswordField(
                         label = "Confirmar contraseña",
-                        value = confirmPassword,
-                        onValueChange = { confirmPassword = it },
+                        value = uiState.confirmPassword,
+                        onValueChange = viewModel::onConfirmPasswordChange,
                         visible = confirmVisible,
-                        onToggleVisibility = { confirmVisible = !confirmVisible }
+                        onToggleVisibility = { confirmVisible = !confirmVisible },
+                        error = uiState.confirmError
                     )
                     Spacer(modifier = Modifier.height(20.dp))
 
-                    PrimaryBrownButton(
-                        text = "Crear cuenta",
-                        onClick = { showDemoDialog = true }
-                    )
+                    if (uiState.isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
+                    } else {
+                        PrimaryBrownButton(
+                            text = "Crear cuenta",
+                            onClick = viewModel::register
+                        )
+                    }
                 }
             }
             Spacer(modifier = Modifier.height(24.dp))
@@ -157,7 +165,8 @@ private fun LabeledField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
-    keyboardType: KeyboardType
+    keyboardType: KeyboardType,
+    error: String?
 ) {
     Text(text = label, style = MaterialTheme.typography.labelLarge, color = BrandBrown)
     OutlinedTextField(
@@ -168,8 +177,10 @@ private fun LabeledField(
             .padding(top = 4.dp),
         placeholder = { Text(placeholder) },
         singleLine = true,
+        isError = error != null,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType)
     )
+    FieldError(error)
 }
 
 @Composable
@@ -178,7 +189,8 @@ private fun PasswordField(
     value: String,
     onValueChange: (String) -> Unit,
     visible: Boolean,
-    onToggleVisibility: () -> Unit
+    onToggleVisibility: () -> Unit,
+    error: String?
 ) {
     Text(text = label, style = MaterialTheme.typography.labelLarge, color = BrandBrown)
     OutlinedTextField(
@@ -189,6 +201,7 @@ private fun PasswordField(
             .padding(top = 4.dp),
         placeholder = { Text("••••••••") },
         singleLine = true,
+        isError = error != null,
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         trailingIcon = {
@@ -201,4 +214,17 @@ private fun PasswordField(
             }
         }
     )
+    FieldError(error)
+}
+
+@Composable
+private fun FieldError(error: String?) {
+    if (error != null) {
+        Text(
+            text = error,
+            color = CancelRed,
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+        )
+    }
 }

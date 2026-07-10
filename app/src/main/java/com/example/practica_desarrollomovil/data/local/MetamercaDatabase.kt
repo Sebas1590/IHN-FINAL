@@ -4,17 +4,26 @@ import androidx.room.Database
 import androidx.room.RoomDatabase
 import com.example.practica_desarrollomovil.data.local.dao.ProductDao
 import com.example.practica_desarrollomovil.data.local.dao.SaleDao
+import com.example.practica_desarrollomovil.data.local.dao.UserDao
 import com.example.practica_desarrollomovil.data.local.entity.ProductEntity
 import com.example.practica_desarrollomovil.data.local.entity.SaleEntity
 import com.example.practica_desarrollomovil.data.local.entity.ReceiptEntity
 import com.example.practica_desarrollomovil.data.local.entity.ReceiptItemEntity
+import com.example.practica_desarrollomovil.data.local.entity.UserEntity
 
 @Database(
-    entities = [ProductEntity::class, SaleEntity::class, ReceiptEntity::class, ReceiptItemEntity::class],
-    version = 1,
+    entities = [
+        ProductEntity::class,
+        SaleEntity::class,
+        ReceiptEntity::class,
+        ReceiptItemEntity::class,
+        UserEntity::class
+    ],
+    version = 2,
     exportSchema = false
 )
 abstract class MetamercaDatabase : RoomDatabase() {
     abstract fun productDao(): ProductDao
     abstract fun saleDao(): SaleDao
+    abstract fun userDao(): UserDao
 }
