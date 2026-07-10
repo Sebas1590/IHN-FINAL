@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Fondo blanco sólido -->
+    <item android:drawable="@color/white" />
+
+    <!--
+      El nuevo logo tiene mucho espacio en blanco propio.
+      Ajustamos los márgenes a 4dp para que el contenido real del logo
+      se vea lo más grande y claro posible sin que Android lo recorte.
+    -->
+    <item
+        android:drawable="@drawable/logo_metamerca"
+        android:gravity="center"
+        android:top="4dp"
+        android:bottom="4dp"
+        android:left="4dp"
+        android:right="4dp" />
+</layer-list>
