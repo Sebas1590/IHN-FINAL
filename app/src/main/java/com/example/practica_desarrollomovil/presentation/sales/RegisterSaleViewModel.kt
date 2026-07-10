@@ -3,10 +3,13 @@ package com.example.practica_desarrollomovil.presentation.sales
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.practica_desarrollomovil.domain.model.LowStockItem
 import com.example.practica_desarrollomovil.domain.model.Product
 import com.example.practica_desarrollomovil.domain.model.ReceiptItem
+import com.example.practica_desarrollomovil.domain.model.StockRules
 import com.example.practica_desarrollomovil.domain.repository.ProductRepository
 import com.example.practica_desarrollomovil.domain.repository.SaleRepository
+import com.example.practica_desarrollomovil.util.QuantityFormatter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -26,10 +29,13 @@ data class RegisterSaleUiState(
     val receiptId: Long? = null,
     val products: List<Product> = emptyList(),
     val lineItems: List<SaleLineItem> = listOf(SaleLineItem()),
+    /** Cantidad original por producto en el recibo que se está editando (para calcular stock disponible). */
+    val originalQuantities: Map<Long, Double> = emptyMap(),
     val isSaving: Boolean = false,
     val isLoading: Boolean = false,
     val errorMessage: String? = null,
-    val savedSuccessfully: Boolean = false
+    val savedSuccessfully: Boolean = false,
+    val lowStockItems: List<LowStockItem> = emptyList()
 ) {
     val totalAmount: Double
         get() {
@@ -39,10 +45,21 @@ data class RegisterSaleUiState(
                 product.pricePerUnit * qty
             }
         }
+
+    /** Stock realmente disponible para un producto (suma lo ya reservado en el recibo en edición). */
+    fun availableStockFor(product: Product): Double =
+        product.stock + (originalQuantities[product.id] ?: 0.0)
+
+    /** True si la línea seleccionó un producto y la cantidad supera el stock disponible. */
+    fun isLineOverStock(line: SaleLineItem): Boolean {
+        val product = products.find { it.id == line.productId } ?: return false
+        val qty = line.quantity.toDoubleOrNull() ?: return false
+        return qty > availableStockFor(product)
+    }
 }
 
 class RegisterSaleViewModel(
-    productRepository: ProductRepository,
+    private val productRepository: ProductRepository,
     private val saleRepository: SaleRepository,
     private val initialReceiptId: Long? = null
 ) : ViewModel() {
@@ -65,14 +82,21 @@ class RegisterSaleViewModel(
             formState.update { it.copy(isLoading = true) }
             val receipt = saleRepository.getReceipt(id)
             if (receipt != null) {
+                // Cantidad original por producto: permite editar sin bloquearse por el propio stock ya descontado.
+                val originals = receipt.items
+                    .mapNotNull { item -> item.productId?.let { pid -> pid to item.quantity } }
+                    .groupBy({ it.first }, { it.second })
+                    .mapValues { entry -> entry.value.sum() }
+
                 formState.update {
                     it.copy(
                         isLoading = false,
+                        originalQuantities = originals,
                         lineItems = receipt.items.map { item ->
                             SaleLineItem(
                                 id = UUID.randomUUID().toString(),
                                 productId = item.productId,
-                                quantity = item.quantity.toString()
+                                quantity = formatLoadedQuantity(item.productId, item.quantity)
                             )
                         }
                     )
@@ -81,6 +105,11 @@ class RegisterSaleViewModel(
                 formState.update { it.copy(isLoading = false, errorMessage = "Venta no encontrada") }
             }
         }
+    }
+
+    private fun formatLoadedQuantity(productId: Long?, quantity: Double): String {
+        val unit = uiState.value.products.find { it.id == productId }?.unit
+        return if (unit != null) QuantityFormatter.toInput(quantity, unit) else QuantityFormatter.format(quantity)
     }
 
     fun addLineItem() {
@@ -107,7 +136,9 @@ class RegisterSaleViewModel(
             } else {
                 state.copy(
                     lineItems = state.lineItems.map { line ->
-                        if (line.id == lineId) line.copy(productId = productId) else line
+                        // Al cambiar de producto se limpia la cantidad para no arrastrar valores
+                        // inválidos (p. ej. decimales de un producto por kg a uno por unidad).
+                        if (line.id == lineId) line.copy(productId = productId, quantity = "") else line
                     },
                     errorMessage = null
                 )
@@ -118,10 +149,10 @@ class RegisterSaleViewModel(
     fun onQuantityChange(lineId: String, value: String) {
         formState.update { state ->
             val line = state.lineItems.find { it.id == lineId }
-            val product = state.products.find { it.id == line?.productId }
-            
-            // Reemplazar cualquier punto o coma si el producto es UNID
-            val processedValue = if (product?.unit == com.example.practica_desarrollomovil.domain.model.ProductUnit.UNID) {
+            val product = uiState.value.products.find { it.id == line?.productId }
+
+            // Si la unidad no admite decimales, se descartan puntos y comas.
+            val processedValue = if (product != null && !product.unit.allowsDecimals) {
                 value.replace(".", "").replace(",", "")
             } else {
                 value
@@ -138,24 +169,47 @@ class RegisterSaleViewModel(
 
     fun registerSale() {
         val state = uiState.value
-        val validItems = state.lineItems.mapNotNull { line ->
-            val product = state.products.find { it.id == line.productId } ?: return@mapNotNull null
-            val qty = line.quantity.toDoubleOrNull() ?: return@mapNotNull null
-            if (qty <= 0) return@mapNotNull null
-            
-            // Validate stock and units
-            if (qty > product.stock && state.receiptId == null) {
-                // For new sale, check stock. For edit, it's more complex as repository handles it.
-                // But for UI feedback, this is simplified.
+
+        // Construir líneas válidas y validar cada una con mensajes claros.
+        val validItems = mutableListOf<ReceiptItem>()
+        for (line in state.lineItems) {
+            val product = state.products.find { it.id == line.productId } ?: continue
+            val qty = line.quantity.toDoubleOrNull()
+
+            if (qty == null || qty <= 0) {
+                formState.update {
+                    it.copy(errorMessage = "Ingresa una cantidad válida para ${product.name}")
+                }
+                return
             }
 
-            ReceiptItem(
-                productId = product.id,
-                productName = product.name,
-                quantity = qty,
-                unitPrice = product.pricePerUnit,
-                totalAmount = product.pricePerUnit * qty,
-                profitAmount = 0.0
+            if (!product.unit.allowsDecimals && qty % 1.0 != 0.0) {
+                formState.update {
+                    it.copy(errorMessage = "${product.name} se vende por unidad: usa cantidades enteras")
+                }
+                return
+            }
+
+            val available = state.availableStockFor(product)
+            if (qty > available) {
+                formState.update {
+                    it.copy(
+                        errorMessage = "No hay suficiente stock de ${product.name}. " +
+                            "Disponible: ${QuantityFormatter.withUnit(available, product.unit)}"
+                    )
+                }
+                return
+            }
+
+            validItems.add(
+                ReceiptItem(
+                    productId = product.id,
+                    productName = product.name,
+                    quantity = qty,
+                    unitPrice = product.pricePerUnit,
+                    totalAmount = product.pricePerUnit * qty,
+                    profitAmount = 0.0
+                )
             )
         }
 
@@ -174,21 +228,43 @@ class RegisterSaleViewModel(
             }
 
             result.onSuccess {
+                val lowStock = computeLowStock(validItems.mapNotNull { it.productId }.distinct())
                 formState.update {
                     it.copy(
                         isSaving = false,
                         savedSuccessfully = true,
+                        lowStockItems = lowStock,
+                        originalQuantities = emptyMap(),
                         lineItems = listOf(SaleLineItem())
                     )
                 }
             }.onFailure { error ->
-                formState.update { it.copy(isSaving = false, errorMessage = error.message) }
+                formState.update {
+                    it.copy(isSaving = false, errorMessage = error.message ?: "No se pudo registrar la venta")
+                }
             }
         }
     }
 
+    /** Relee el stock actualizado y arma la lista de productos con poco stock o agotados. */
+    private suspend fun computeLowStock(productIds: List<Long>): List<LowStockItem> =
+        productIds.mapNotNull { id ->
+            val product = productRepository.getProduct(id) ?: return@mapNotNull null
+            if (StockRules.needsAlert(product.stock, product.unit)) {
+                LowStockItem(
+                    productName = product.name,
+                    remainingStock = product.stock,
+                    unit = product.unit
+                )
+            } else null
+        }
+
     fun consumeSaveSuccess() {
         formState.update { it.copy(savedSuccessfully = false) }
+    }
+
+    fun consumeLowStockAlert() {
+        formState.update { it.copy(lowStockItems = emptyList()) }
     }
 
     class Factory(

@@ -7,6 +7,7 @@ import com.example.practica_desarrollomovil.domain.model.Product
 import com.example.practica_desarrollomovil.domain.model.ProductUnit
 import com.example.practica_desarrollomovil.domain.repository.ProductRepository
 import com.example.practica_desarrollomovil.domain.repository.SaleRepository
+import com.example.practica_desarrollomovil.util.QuantityFormatter
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,7 +58,7 @@ class ProductFormViewModel(
                 _uiState.update {
                     it.copy(
                         name = product.name,
-                        stock = product.stock.toString(),
+                        stock = QuantityFormatter.toInput(product.stock, product.unit),
                         unit = product.unit,
                         pricePerUnit = product.pricePerUnit.toString(),
                         totalInvestment = product.totalInvestment.toString(),
@@ -76,8 +77,8 @@ class ProductFormViewModel(
 
     fun onNameChange(value: String) = _uiState.update { it.copy(name = value) }
     
-    fun onStockChange(value: String) = _uiState.update { 
-        if (it.unit == ProductUnit.UNID && (value.contains(".") || value.contains(","))) return@update it
+    fun onStockChange(value: String) = _uiState.update {
+        if (!it.unit.allowsDecimals && (value.contains(".") || value.contains(","))) return@update it
 
         val newStock = value.toDoubleOrNull() ?: 0.0
         val currentTotal = it.totalInvestment.toDoubleOrNull() ?: 0.0
@@ -94,7 +95,11 @@ class ProductFormViewModel(
         it.copy(stock = value, unitCost = updatedUnitCost, totalInvestment = updatedTotal) 
     }
 
-    fun onUnitChange(unit: ProductUnit) = _uiState.update { it.copy(unit = unit) }
+    fun onUnitChange(unit: ProductUnit) = _uiState.update {
+        // Al pasar a una unidad entera, se recorta cualquier decimal ya escrito en el stock.
+        val sanitizedStock = if (!unit.allowsDecimals) it.stock.substringBefore(".").substringBefore(",") else it.stock
+        it.copy(unit = unit, stock = sanitizedStock)
+    }
     fun onPriceChange(value: String) = _uiState.update { it.copy(pricePerUnit = value) }
     
     fun onInvestmentModeChange(mode: InvestmentMode) = _uiState.update { it.copy(investmentMode = mode) }
@@ -149,9 +154,9 @@ class ProductFormViewModel(
             return
         }
 
-        // Validación: Unidades no permiten decimales
-        if (state.unit == ProductUnit.UNID && stock % 1.0 != 0.0) {
-            _uiState.update { it.copy(errorMessage = "La unidad 'Unid.' no permite decimales") }
+        // Validación: las unidades enteras no permiten decimales
+        if (!state.unit.allowsDecimals && stock % 1.0 != 0.0) {
+            _uiState.update { it.copy(errorMessage = "La unidad '${state.unit.label}' no permite decimales") }
             return
         }
 

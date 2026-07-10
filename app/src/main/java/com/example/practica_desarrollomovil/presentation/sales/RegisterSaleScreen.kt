@@ -62,15 +62,18 @@ import androidx.compose.material.icons.filled.Search
 import coil.compose.AsyncImage
 import androidx.compose.ui.layout.ContentScale
 import com.example.practica_desarrollomovil.domain.model.Product
+import com.example.practica_desarrollomovil.presentation.components.LowStockDialog
 import com.example.practica_desarrollomovil.presentation.components.MetamercaAlertDialog
 import com.example.practica_desarrollomovil.presentation.components.MetamercaSuccessDialog
 import com.example.practica_desarrollomovil.presentation.components.MetamercaCard
 import com.example.practica_desarrollomovil.presentation.components.MetamercaSnackbarHost
 import com.example.practica_desarrollomovil.presentation.theme.BrandBrown
+import com.example.practica_desarrollomovil.presentation.theme.BrandOrange
 import com.example.practica_desarrollomovil.presentation.theme.CancelRed
 import com.example.practica_desarrollomovil.presentation.theme.CreamBackground
 import com.example.practica_desarrollomovil.presentation.theme.TextSecondary
 import com.example.practica_desarrollomovil.util.CurrencyFormatter
+import com.example.practica_desarrollomovil.util.QuantityFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,6 +87,9 @@ fun RegisterSaleScreen(
     var showExitDialog by remember { mutableStateOf(false) }
     var showSaveDialog by remember { mutableStateOf(false) }
     var showSuccessDialog by remember { mutableStateOf(false) }
+    var showLowStockDialog by remember { mutableStateOf(false) }
+    // Si true, al cerrar la alerta de stock se sale de la pantalla; si false, se queda para otra venta.
+    var exitAfterAlert by remember { mutableStateOf(true) }
 
     // Estados para el Modal de selección de productos
     var showProductModal by remember { mutableStateOf(false) }
@@ -107,26 +113,38 @@ fun RegisterSaleScreen(
         }
     }
 
+    // Tras cerrar el éxito: si hay productos con poco stock se muestra la alerta antes de continuar.
+    val finishSuccess = { exit: Boolean ->
+        showSuccessDialog = false
+        viewModel.consumeSaveSuccess()
+        if (uiState.lowStockItems.isNotEmpty()) {
+            exitAfterAlert = exit
+            showLowStockDialog = true
+        } else if (exit) {
+            onBack()
+        }
+    }
+
     if (showSuccessDialog) {
         MetamercaSuccessDialog(
-            onDismissRequest = {
-                showSuccessDialog = false
-                viewModel.consumeSaveSuccess()
-                onBack()
-            },
-            onConfirm = {
-                showSuccessDialog = false
-                viewModel.consumeSaveSuccess()
-                onBack()
-            },
-            onSecondaryAction = {
-                showSuccessDialog = false
-                viewModel.consumeSaveSuccess()
-            },
+            onDismissRequest = { finishSuccess(true) },
+            onConfirm = { finishSuccess(true) },
+            onSecondaryAction = { finishSuccess(false) },
             title = "¡Venta registrada!",
             text = "La venta se ha guardado correctamente en el sistema.",
             confirmText = "Aceptar",
             secondaryText = "Nueva venta"
+        )
+    }
+
+    if (showLowStockDialog) {
+        LowStockDialog(
+            items = uiState.lowStockItems,
+            onDismiss = {
+                showLowStockDialog = false
+                viewModel.consumeLowStockAlert()
+                if (exitAfterAlert) onBack()
+            }
         )
     }
 
@@ -249,9 +267,12 @@ fun RegisterSaleScreen(
             MetamercaCard {
                 Column(modifier = Modifier.padding(16.dp)) {
                     uiState.lineItems.forEach { line ->
+                        val selectedProduct = uiState.products.find { it.id == line.productId }
                         SaleLineRow(
                             line = line,
                             products = uiState.products,
+                            availableStock = selectedProduct?.let { uiState.availableStockFor(it) },
+                            isOverStock = uiState.isLineOverStock(line),
                             onPickProduct = {
                                 currentLinePickingId = line.id
                                 showProductModal = true
@@ -317,13 +338,14 @@ fun RegisterSaleScreen(
                     if (uiState.isLoading) {
                         CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
                     } else {
+                        val hasOverStock = uiState.lineItems.any { uiState.isLineOverStock(it) }
                         Button(
                             onClick = { showSaveDialog = true },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(56.dp)
                                 .semantics { contentDescription = "Guardar venta" },
-                            enabled = !uiState.isSaving,
+                            enabled = !uiState.isSaving && !hasOverStock,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = BrandBrown,
                                 contentColor = Color.White
@@ -350,74 +372,94 @@ fun RegisterSaleScreen(
 private fun SaleLineRow(
     line: SaleLineItem,
     products: List<Product>,
+    availableStock: Double?,
+    isOverStock: Boolean,
     onPickProduct: () -> Unit,
     onQuantityChange: (String) -> Unit,
     onRemove: () -> Unit
 ) {
     val selectedProduct = products.find { it.id == line.productId }
+    val allowsDecimals = selectedProduct?.unit?.allowsDecimals ?: true
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        OutlinedTextField(
-            value = selectedProduct?.name ?: "",
-            onValueChange = {},
-            readOnly = true,
-            modifier = Modifier
-                .weight(1.5f)
-                .clickable { onPickProduct() },
-            enabled = false,
-            colors = OutlinedTextFieldDefaults.colors(
-                disabledTextColor = if (selectedProduct != null) BrandBrown else TextSecondary,
-                disabledBorderColor = BrandBrown,
-                disabledPlaceholderColor = TextSecondary
-            ),
-            placeholder = { 
-                Text(
-                    "Seleccione producto", 
-                    maxLines = 1, 
-                    style = MaterialTheme.typography.bodySmall
-                ) 
-            },
-            shape = RoundedCornerShape(12.dp),
-            singleLine = true
-        )
-
-        OutlinedTextField(
-            value = line.quantity,
-            onValueChange = { newValue ->
-                if (newValue.isEmpty() || newValue.matches(Regex("""^\d*\.?\d*$"""))) {
-                    onQuantityChange(newValue)
-                }
-            },
-            modifier = Modifier.weight(0.8f), // Reduced weight to make room for delete
-            placeholder = { Text("0.0") },
-            keyboardOptions = KeyboardOptions(
-                keyboardType = if (selectedProduct?.unit == com.example.practica_desarrollomovil.domain.model.ProductUnit.UNID) 
-                    KeyboardType.Number 
-                else 
-                    KeyboardType.Decimal
-            ),
-            suffix = {
-                selectedProduct?.let {
-                    Text(it.unit.label, color = BrandBrown, style = MaterialTheme.typography.labelSmall)
-                }
-            },
-            shape = RoundedCornerShape(12.dp),
-            singleLine = true
-        )
-
-        IconButton(
-            onClick = onRemove,
-            modifier = Modifier
-                .padding(start = 4.dp)
-                .size(42.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(CancelRed)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Delete, contentDescription = "Eliminar item", tint = Color.White, modifier = Modifier.size(20.dp))
+            OutlinedTextField(
+                value = selectedProduct?.name ?: "",
+                onValueChange = {},
+                readOnly = true,
+                modifier = Modifier
+                    .weight(1.5f)
+                    .clickable { onPickProduct() },
+                enabled = false,
+                colors = OutlinedTextFieldDefaults.colors(
+                    disabledTextColor = if (selectedProduct != null) BrandBrown else TextSecondary,
+                    disabledBorderColor = BrandBrown,
+                    disabledPlaceholderColor = TextSecondary
+                ),
+                placeholder = {
+                    Text(
+                        "Seleccione producto",
+                        maxLines = 1,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                },
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value = line.quantity,
+                onValueChange = { newValue ->
+                    // Enteros solo si la unidad no admite decimales.
+                    val pattern = if (allowsDecimals) """^\d*\.?\d*$""" else """^\d*$"""
+                    if (newValue.isEmpty() || newValue.matches(Regex(pattern))) {
+                        onQuantityChange(newValue)
+                    }
+                },
+                modifier = Modifier.weight(0.8f),
+                isError = isOverStock,
+                placeholder = { Text(if (allowsDecimals) "0.0" else "0") },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = if (allowsDecimals) KeyboardType.Decimal else KeyboardType.Number
+                ),
+                suffix = {
+                    selectedProduct?.let {
+                        Text(it.unit.label, color = BrandBrown, style = MaterialTheme.typography.labelSmall)
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
+                singleLine = true
+            )
+
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier
+                    .padding(start = 4.dp)
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(CancelRed)
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = "Eliminar item", tint = Color.White, modifier = Modifier.size(20.dp))
+            }
+        }
+
+        // Texto de apoyo: stock disponible o aviso de que se excede.
+        if (selectedProduct != null && availableStock != null) {
+            val overColor = if (isOverStock) CancelRed else TextSecondary
+            Text(
+                text = if (isOverStock) {
+                    "Solo hay ${QuantityFormatter.withUnit(availableStock, selectedProduct.unit)} disponibles"
+                } else {
+                    "Disponible: ${QuantityFormatter.withUnit(availableStock, selectedProduct.unit)}"
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = overColor,
+                modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+            )
         }
     }
 }
@@ -427,10 +469,12 @@ private fun ProductSelectionItem(
     product: Product,
     onClick: () -> Unit
 ) {
+    val isOut = product.stock <= 0.0
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable(enabled = !isOut, onClick = onClick)
             .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -452,7 +496,7 @@ private fun ProductSelectionItem(
                 Icon(Icons.Default.ShoppingCart, contentDescription = null, tint = BrandBrown)
             }
         }
-        
+
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -461,21 +505,22 @@ private fun ProductSelectionItem(
             Text(
                 text = product.name,
                 style = MaterialTheme.typography.titleMedium,
-                color = BrandBrown,
+                color = if (isOut) TextSecondary else BrandBrown,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1
             )
             Text(
-                text = "Stock: ${product.stock.toInt()} ${product.unit.label}",
+                text = if (isOut) "Agotado" else "Stock: ${QuantityFormatter.withUnit(product.stock, product.unit)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary
+                color = if (isOut) CancelRed else TextSecondary,
+                fontWeight = if (isOut) FontWeight.Bold else FontWeight.Normal
             )
         }
-        
+
         Text(
             text = CurrencyFormatter.formatSoles(product.pricePerUnit),
             style = MaterialTheme.typography.titleMedium,
-            color = BrandBrown,
+            color = if (isOut) TextSecondary else BrandBrown,
             fontWeight = FontWeight.Bold
         )
     }

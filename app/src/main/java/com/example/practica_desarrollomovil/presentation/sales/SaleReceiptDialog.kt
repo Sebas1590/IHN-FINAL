@@ -19,7 +19,7 @@ import com.example.practica_desarrollomovil.presentation.theme.BrandBrown
 import com.example.practica_desarrollomovil.presentation.theme.TextSecondary
 import com.example.practica_desarrollomovil.util.CurrencyFormatter
 import com.example.practica_desarrollomovil.util.DateTimeUtils
-import java.util.Locale
+import com.example.practica_desarrollomovil.util.QuantityFormatter
 
 @Composable
 fun SaleReceiptDialog(
@@ -79,8 +79,8 @@ fun SaleReceiptDialog(
                 receipt.items.forEach { item ->
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                         Text(
-                            text = String.format(Locale.US, "%.1f", item.quantity), 
-                            modifier = Modifier.weight(0.7f), 
+                            text = QuantityFormatter.format(item.quantity),
+                            modifier = Modifier.weight(0.7f),
                             style = MaterialTheme.typography.bodyMedium
                         )
                         Text(

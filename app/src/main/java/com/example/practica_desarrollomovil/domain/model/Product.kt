@@ -15,12 +15,12 @@ data class Product(
         get() = if (stock > 0) totalInvestment / stock else 0.0
 }
 
-enum class ProductUnit(val label: String) {
-    UNID("Unid."),
-    KG("kg"),
-    L("L"),
-    G("g"),
-    ML("ml");
+enum class ProductUnit(val label: String, val allowsDecimals: Boolean) {
+    UNID("Unid.", false),
+    KG("kg", true),
+    L("L", true),
+    G("g", true),
+    ML("ml", true);
 
     companion object {
         fun fromLabel(label: String): ProductUnit =

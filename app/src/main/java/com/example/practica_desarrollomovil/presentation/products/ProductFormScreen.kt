@@ -251,12 +251,15 @@ fun ProductFormScreen(
                     Text("Stock", style = MaterialTheme.typography.labelLarge)
                     OutlinedTextField(
                         value = uiState.stock,
-                        onValueChange = { if (it.isEmpty() || it.matches(Regex("""^\d*\.?\d*$"""))) viewModel.onStockChange(it) },
+                        onValueChange = {
+                            val pattern = if (uiState.unit.allowsDecimals) """^\d*\.?\d*$""" else """^\d*$"""
+                            if (it.isEmpty() || it.matches(Regex(pattern))) viewModel.onStockChange(it)
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(top = 4.dp),
                         keyboardOptions = KeyboardOptions(
-                            keyboardType = if (uiState.unit == ProductUnit.UNID) KeyboardType.Number else KeyboardType.Decimal
+                            keyboardType = if (uiState.unit.allowsDecimals) KeyboardType.Decimal else KeyboardType.Number
                         ),
                         shape = RoundedCornerShape(12.dp),
                         singleLine = true
