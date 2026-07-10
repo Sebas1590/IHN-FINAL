@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -27,6 +30,7 @@ import com.example.practica_desarrollomovil.presentation.home.HomeScreen
 import com.example.practica_desarrollomovil.presentation.home.HomeViewModel
 import com.example.practica_desarrollomovil.presentation.login.LoginScreen
 import com.example.practica_desarrollomovil.presentation.login.LoginViewModel
+import com.example.practica_desarrollomovil.presentation.login.RegisterScreen
 import com.example.practica_desarrollomovil.presentation.products.ProductFormScreen
 import com.example.practica_desarrollomovil.presentation.products.ProductFormViewModel
 import com.example.practica_desarrollomovil.presentation.products.ProductsScreen
@@ -49,6 +53,8 @@ fun MetamercaNavHost(container: AppContainer) {
     val loginViewModel = viewModel<LoginViewModel>(factory = container.loginViewModelFactory())
     val isGuestActive by loginViewModel.isGuestSessionActive.collectAsStateWithLifecycle()
 
+    var showRegister by rememberSaveable { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -56,11 +62,19 @@ fun MetamercaNavHost(container: AppContainer) {
     ) {
         if (isGuestActive) {
             MainScaffold(container = container)
+        } else if (showRegister) {
+            RegisterScreen(
+                onBack = { showRegister = false }
+            )
         } else {
             LoginScreen(
+                onLoginSuccess = {
+                    loginViewModel.continueWithoutSession { }
+                },
                 onContinueWithoutSession = {
                     loginViewModel.continueWithoutSession { }
-                }
+                },
+                onGoToRegister = { showRegister = true }
             )
         }
     }
