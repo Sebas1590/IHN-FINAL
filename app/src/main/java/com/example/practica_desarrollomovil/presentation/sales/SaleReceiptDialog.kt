@@ -121,16 +121,6 @@ fun SaleReceiptDialog(
                 
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                Text(
-                    text = "¡Gracias por su compra!",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextSecondary,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                Spacer(modifier = Modifier.height(24.dp))
-                
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
